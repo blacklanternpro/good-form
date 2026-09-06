@@ -47,9 +47,9 @@ def create_app() -> FastAPI:
         seeds = [p.name for p in seed_dir().iterdir()] if seed_dir().is_dir() else []
         raster = [n for n in seeds if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))]
         return templates.TemplateResponse(
+            request,
             "index.html",
             {
-                "request": request,
                 "directory": directory,
                 "images": images,
                 "fame": fame,
@@ -63,7 +63,7 @@ def create_app() -> FastAPI:
         job = db.get_job(job_id)
         if job is None:
             raise HTTPException(404, "Unknown job")
-        return templates.TemplateResponse("working.html", {"request": request, "job": job})
+        return templates.TemplateResponse(request, "working.html", {"job": job})
 
     def _kick(kind: str, runner) -> RedirectResponse:
         job_id = joblib.start_job(kind, runner)

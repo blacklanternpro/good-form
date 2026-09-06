@@ -12,7 +12,7 @@ TAG_KEYWORDS: dict[str, tuple[str, ...]] = {
     "y2k": ("y2k",),
     "webcore": ("webcore", "weirdcore"),
     "zine": ("zine", "fanzine"),
-    "scan": ("scan", "scanned", "scanner"),
+    "scan": ("scan", "scans", "scanned", "scanner"),
     "collage": ("collage",),
     "analog": ("analog", "analogue", "35mm"),
     "diary": ("diary", "journal"),
