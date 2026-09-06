@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+scraped_cache/**
+!scraped_cache/.gitkeep
+*.zip
+.coverage
+htmlcov/
