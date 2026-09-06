@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>good-form — directory</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>good-form</h1>
+  <p class="tagline">local visual curator · niche blogs and archives</p>
+
+  <form class="actions" onsubmit="return false;">
+    <button type="submit" form="job-discover">Discover New Sources</button>
+    <button type="submit" form="job-mine">Mine Blogrolls</button>
+    <button type="submit" form="job-scrape">Scrape Active Feeds</button>
+    <button type="submit" form="job-hop">Visual Hop</button>
+    <button type="button" id="select-all">Select All</button>
+    <button type="button" id="deselect-all">Deselect All</button>
+    <button type="button" id="download-selected">Download Selected (.zip)</button>
+    <button type="button" id="download-all">Download All (.zip)</button>
+  </form>
+  <form id="job-discover" method="post" action="/jobs/discover"></form>
+  <form id="job-mine" method="post" action="/jobs/mine"></form>
+  <form id="job-scrape" method="post" action="/jobs/scrape"></form>
+  <form id="job-hop" method="post" action="/jobs/hop"></form>
+
+  <table class="layout">
+    <tr>
+      <td class="sidebar">
+        <h2>Curator Hall of Fame</h2>
+        {% if fame %}
+        <ol class="fame">
+          {% for row in fame %}
+          <li>[{{ loop.index }}] {{ row.domain }} — {{ row.downloads_count }} saved</li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p>No saved images yet. Downloads (not scrapes) appear here.</p>
+        {% endif %}
+      </td>
+      <td class="main">
+        <h2>Web Directory</h2>
+        {% if not directory %}
+        <p>
+          No sources yet.
+          {% if seed_count == 0 %}
+          Put reference images in <code>seed_images/</code> then click Discover New Sources.
+          {% else %}
+          Click Discover New Sources to reverse-search {{ seed_count }} seed image(s).
+          {% endif %}
+        </p>
+        {% endif %}
+        {% for tag, sources in directory %}
+        <h3>{{ tag }}</h3>
+        <ul>
+          {% for src in sources %}
+          <li>
+            <label>
+              <input type="checkbox" class="source-enabled" data-id="{{ src.id }}" {% if src.enabled %}checked{% endif %}>
+              include in scrape
+            </label>
+            —
+            <a href="{{ src.sample_url or ('https://' + src.domain) }}">{{ src.domain }}</a>
+            {% if src.title and src.title != src.domain %} — {{ src.title }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endfor %}
+
+        <h2>Curation Review Grid</h2>
+        {% if not images %}
+        <p>No candidate images. Enable sources and click Scrape Active Feeds.</p>
+        {% else %}
+        <table class="grid">
+          <tr>
+            {% for img in images %}
+            <td>
+              <label>
+                <input type="checkbox" class="pick" data-id="{{ img.id }}" value="{{ img.id }}">
+                select
+              </label>
+              <div>
+                <img src="/media/{{ img.id }}" alt="candidate from {{ img.domain }}" width="160">
+              </div>
+              <div>{{ img.width }}x{{ img.height }}</div>
+              <div>
+                <a href="{{ img.origin_url or img.image_url }}">{{ img.domain }}</a>
+              </div>
+              <div>
+                <a href="/api/images/{{ img.id }}/file?save=1">Download</a>
+              </div>
+            </td>
+            {% if loop.index % 4 == 0 and not loop.last %}
+          </tr><tr>
+            {% endif %}
+            {% endfor %}
+          </tr>
+        </table>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+  <script src="/static/app.js"></script>
+</body>
+</html>

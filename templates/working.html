@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if job.status in ("done", "error") %}
+  <meta http-equiv="refresh" content="0;url=/">
+  {% else %}
+  <meta http-equiv="refresh" content="2">
+  {% endif %}
+  <title>Working… {{ job.kind }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Working…</h1>
+  <p><strong>Job:</strong> {{ job.kind }} ({{ job.status }})</p>
+  <p>{{ job.message }}</p>
+  <pre>{{ job.log or "" }}</pre>
+  <p><a href="/">Back to directory</a></p>
+  <script>
+    (function () {
+      var status = "{{ job.status }}";
+      if (status === "done" || status === "error") {
+        window.location.replace("/");
+      } else {
+        setTimeout(function () { window.location.reload(); }, 2000);
+      }
+    })();
+  </script>
+</body>
+</html>

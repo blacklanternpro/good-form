@@ -1,0 +1,73 @@
+body {
+  font-family: "Times New Roman", Times, serif;
+  background: #ffffff;
+  color: #000000;
+  margin: 12px;
+}
+
+h1, h2, h3 {
+  font-family: "Times New Roman", Times, serif;
+  font-weight: bold;
+}
+
+h1 { font-size: 1.6rem; margin-bottom: 0; }
+.tagline { margin-top: 0; color: #333; }
+
+a:link { color: #0000ee; }
+a:visited { color: #551a8b; }
+
+.actions button {
+  font-family: "Times New Roman", Times, serif;
+  margin: 0 4px 6px 0;
+  padding: 2px 8px;
+}
+
+table.layout {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #666;
+}
+
+table.layout > tbody > tr > td {
+  border: 1px solid #666;
+  vertical-align: top;
+  padding: 8px;
+}
+
+td.sidebar {
+  width: 220px;
+  background: #ffffcc;
+}
+
+ol.fame {
+  padding-left: 1.4em;
+}
+
+table.grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.grid td {
+  border: 1px solid #999;
+  padding: 6px;
+  width: 25%;
+  vertical-align: top;
+}
+
+table.grid img {
+  max-width: 160px;
+  max-height: 160px;
+  border: 1px solid #000;
+}
+
+code { font-family: "Courier New", Courier, monospace; }
+
+@media (max-width: 720px) {
+  table.layout, table.layout tbody, table.layout tr, table.layout td {
+    display: block;
+    width: 100%;
+  }
+  td.sidebar { width: auto; }
+  table.grid td { width: 50%; display: inline-block; }
+}
