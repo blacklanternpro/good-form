@@ -1,6 +1,10 @@
 # good-form: ops, admin, and credit-safe engine
 
-Date: 2026-09-07
+Date: 2026-09-07 (corrections applied 2026-09-10)
+
+> **Precedence.** [`docs/emergent/EMERGENT-MASTER-PROMPT.md`](../../emergent/EMERGENT-MASTER-PROMPT.md) outranks this document, which outranks the 2026-09-06 curator spec. Where the master prompt disagrees with anything below, the master prompt wins. Blocks marked **Corrected 2026-09-10** fix errors that were in the original text; they are not new requirements.
+>
+> **Corpus note.** The ~235 seeds are an export from the owner's own Instagram research account. Their filenames are meaningless (`2019-03-15_10-22-33_UTC.jpg`, `IMG_4821.jpg`), which breaks the filename-derived text fallback, and the corpus subject matter is not the aesthetic vocabulary hardcoded in `categorizer.py`. The master prompt replaces both with a notes sidecar and a corpus-derived, admin-approved vocabulary. It also treats the 15–20 Lens budget as a per-run budget with resumable rounds rather than a claim that the corpus is near-duplicate heavy, because 235 curated posts are mostly distinct.
 
 This spec is a **delta** on [2026-09-06-good-form-curator-design.md](./2026-09-06-good-form-curator-design.md). Unchanged rules still apply: domain policy, categorizer vocabulary, download accounting, Hall of Fame (`downloads_count > 0`), dud nodes, hop depth 1, SerpApi circuit-break to Brave then DuckDuckGo, polite `User-Agent`, and “job error only when Lens and fallback both produce nothing.”
 
@@ -169,11 +173,13 @@ Env keys override settings for secrets and for `GOODFORM_SEED` / `GOODFORM_DB` /
 
 Module: `cluster.py`. Dependency: `ImageHash` (`import imagehash`).
 
-Seed clustering uses `imagehash.phash(img, hash_size=16)` (256-bit) plus an 8×8×3 HSV histogram stored as JSON on `seeds.hist`. Combined distance:
+Seed clustering uses `imagehash.phash(img, hash_size=16)` (256-bit) plus an 8×8×3 HSV histogram stored as JSON on `seeds.hist`. L1-normalise the histogram so its bins sum to `1.0`. Combined distance:
 
-`0.7 * (hamming / 256.0) + 0.3 * (l1 / 156672.0)`
+`0.7 * (hamming / 256.0) + 0.3 * (l1 / 2.0)`
 
-where `156672 = 8 * 8 * 3 * 255`. No cloud vision.
+`2.0` is the maximum L1 distance between two distributions that each sum to 1.0, so both terms land in `[0, 1]` and the 70/30 weighting is the real weighting. No cloud vision.
+
+> **Corrected 2026-09-10.** This previously read `0.3 * (l1 / 156672.0)` "where `156672 = 8 * 8 * 3 * 255`". That identity is false: `8 * 8 * 3 * 255 = 48960`. Implemented as written, the colour term could contribute at most 9% instead of the intended 30%, making the metric very nearly pure pHash. The normalised form above replaces it and removes the magic constant.
 
 Scrape/digest near-dup gate uses a **different** hash: `imagehash.phash(img)` default `hash_size=8` (64-bit). Hamming **< 5** drops. Do not feed 256-bit cluster hashes into that gate.
 
@@ -182,8 +188,9 @@ Procedure before Discover:
 1. List rasters in the configured seed root (jpg/jpeg/png/webp). Empty folder: job message, no crash, no Lens.
 2. Hash each file; upsert `seeds`.
 3. If count ≤ 20: one cluster per file except merge pairs with pHash Hamming ≤ 6.
-4. If count > 20: agglomerative clustering or k-medoids until K ∈ [15, 20]. Prefer K=18 when the dendrogram allows it.
-5. Medoid = member with minimum sum of combined distances to other members. Tie-break: larger `min(width,height)`.
+4. If count > 20: **average-linkage agglomerative**, merging the closest pair until the cluster count equals `clamp(18, 15, 20)`. Update distances by Lance-Williams average linkage, `d(ab, c) = (|a|*d(a,c) + |b|*d(b,c)) / (|a| + |b|)`. Break ties by scanning the upper triangle in ascending index order and taking the first strict minimum, so repeated runs give identical clusters. This replaces the earlier "agglomerative clustering or k-medoids … prefer K=18 when the dendrogram allows it", which was nondeterministic and did not guarantee landing in the band.
+5. Medoid = member with minimum sum of combined distances to other members. Tie-break: larger `min(width,height)`, then lower `seeds.id`.
+6. Record `member_count` and `mean_intra_distance` per cluster. A cluster is **tight** when `mean_intra_distance <= 0.15`, otherwise **loose**. A loose cluster's medoid does not meaningfully represent its members, and the admin cluster cards must say so rather than implying the corpus was compressed losslessly.
 6. Discover Lenses **only medoids**, compressed with the existing ≤500KB JPEG path. Never more than 20 Lens uploads in one job.
 7. After the first Lens failure (401/402/403/429/5xx/timeout/JSON error), the rest of that job is text fallback only.
 
@@ -220,19 +227,34 @@ Probation is judged **between** jobs so the Hot-or-Not pass can happen after scr
 
 Store on each source (reuse `last_digest_at` plus a JSON settings-or-column `last_cycle_image_ids` text, default `[]`): the image ids created for that source in the last scrape/digest.
 
-- At **end** of scrape/digest: for each source that inserted ≥1 new image, set `last_cycle_image_ids` to those ids and `cycles_with_candidates += 1`. Do not strike yet.
-- At **start** of the next scrape/digest: for each source with a non-empty `last_cycle_image_ids`, if every one of those images still has `saved_count = 0`, then `cycles_without_save += 1`; if any has `saved_count > 0`, set `cycles_without_save = 0`. Then clear `last_cycle_image_ids` after scoring (the job about to run will write a new list at end).
+- **Only a manual scrape records or scores cycles. Digest never strikes and never writes a cycle list.**
+- At **end** of a scrape: for each source that inserted ≥1 new image, set `last_cycle_image_ids` to those ids, set `last_cycle_at`, and `cycles_with_candidates += 1`. Do not strike yet.
+- At **start** of the next scrape: a source's cycle is **scoreable only when the user has actually reviewed since it was recorded**, that is `settings.last_download_at > sources.last_cycle_at`, where `last_download_at` is written by `db.record_downloads`.
+  - Not scoreable: leave the list intact, touch no counter.
+  - Scoreable and every listed image still has `saved_count = 0`: `cycles_without_save += 1`.
+  - Scoreable and any has `saved_count > 0`: `cycles_without_save = 0`.
+  - Clear `last_cycle_image_ids` after scoring; the job about to run writes a new list at the end.
 - When `cycles_without_save` reaches 3: `status='probation'`, `enabled=0`, log it. Probation sources are skipped by scrape/digest.
+- If a source produced raster-passing candidates but every one was dropped by the pHash gate, log `0 new / n dup` and treat the cycle as producing no candidates, so it earns no strike.
 - Counters start at 0. No retroactive strikes on images that existed before this feature. Admin restore: counters 0, `last_cycle_image_ids='[]'`, `status='active'`, `enabled=1`.
-- Add column `last_cycle_image_ids TEXT NOT NULL DEFAULT '[]'`.
+- Add columns `last_cycle_image_ids TEXT NOT NULL DEFAULT '[]'` and `last_cycle_at TEXT`.
+
+> **Corrected 2026-09-10.** The original rule scored at the start of the next scrape *or digest* with no evidence the user had reviewed anything. Two consequences: running two scrapes back to back handed out a free strike, and with `GOODFORM_DIGEST_CRON=1` three unattended Monday digests set every source to `probation, enabled=0` — which then starved the digest that caused it. Requiring a download between cycles makes "the user still has to Hot-or-Not" an enforced precondition rather than an assumption.
 
 ## 4. Wayback Machine necromancer (core ingest)
 
-After policy accepts a Lens or fallback URL, **probe** live:
+After policy accepts a Lens or fallback URL, **probe** live using a new `net.probe`, **not** `net.fetch`. `net.fetch` returns `None` for 403, 404 and connection errors alike and discards the status code, so a probe built on it cannot tell a dead host from one that is merely blocking us, and every transient failure would be "resurrected" from a 2008 snapshot. `net.probe` returns `state`, `status_code`, `final_url` and `text_head`:
 
-Dead if NXDOMAIN, connection error, timeout, HTTP 404/410/450, or parked page. Parked: title or body contains (case-insensitive) `domain is for sale`, `buy this domain`, `parked free`, `godaddy.com/domainsearch`, `sedo.com`, `hugedomains`, `this domain may be for sale`.
+- `dead` — NXDOMAIN, connection error, timeout, HTTP 404/410/450, or a parked page
+- `blocked` — HTTP 403 or 429; the host is alive and does not want us, so do **not** resurrect it
+- `alive` — anything else that returned a body
+- `unknown` — unclassifiable; treat as `alive` and do not resurrect
 
-Then CDX:
+Parked: title or body contains (case-insensitive) `domain is for sale`, `buy this domain`, `parked free`, `godaddy.com/domainsearch`, `sedo.com`, `hugedomains`, `this domain may be for sale`.
+
+**Budget.** Deduplicate candidate **hosts** for the job and probe once per host, not once per URL, caching results for the job's lifetime. Cap at 60 probes and 25 CDX lookups per job and log when the budget is reached. 20 medoids × 12 matches is 240 candidate URLs; unbudgeted, at a 0.35s delay with 12s timeouts, a single Discover would run for the better part of an hour inside a daemon thread with no cancel.
+
+Then CDX, rate-limited to **≥ 1 second per archive.org request** by a limiter dedicated to archive.org and separate from the global delay:
 
 `GET https://web.archive.org/cdx/search/cdx?url={url}&output=json&from=2004&to=2014&filter=statuscode:200&collapse=digest&limit=5`
 
@@ -240,7 +262,11 @@ Use a 2004–2014 snapshot. Do not fall back to a 2015–present snapshot. If no
 
 Fetch `https://web.archive.org/web/{timestamp}id_/{original}` when possible. Set `sample_url` to the archived URL, `live_url` to the original, `wayback_timestamp` to the CDX timestamp. `expansion_edges.via_type='wayback'`.
 
-Scrape/Mine against the snapshot when live is dead. Resolve archived image URLs. Blacklist still applies (no Pinterest-via-Wayback).
+**Identity.** `sources.domain` is always `accept_url(original_url)`. Only `sample_url` holds the snapshot URL. Give `ingest_hit` keyword-only `live_url` and `wayback_timestamp` parameters, and add `web.archive.org` and `archive.org` to `policy.BLOCKED_SUFFIXES` so a snapshot URL can never become a source through any other code path.
+
+> **Added 2026-09-10.** The original text said where to store the snapshot but never where the domain comes from, and the obvious reading is fatal. Verified against the current `policy.py`: `accept_url("https://web.archive.org/web/20080512id_/http://cool.blog.example/page")` returns `web.archive.org`, and `is_blacklisted("web.archive.org")` is `False`. Because `sources.domain` is UNIQUE, every resurrected site would have collapsed into a single row named `web.archive.org`.
+
+Scrape/Mine against the snapshot when live is dead. Resolve archived image URLs. Blacklist still applies (no Pinterest-via-Wayback), and it is applied to the **original** host.
 
 UA as above. On HTTP 429: log, mark Wayback `degraded`, skip remaining CDX for that job. Status light: `wayback`.
 
@@ -253,6 +279,8 @@ Google Drive is optional OAuth to the curator’s Google account (not app-user l
 On sync: download rasters into seed root, recluster. On zip or single save: copy originals to `gallery/{domain}/{filename}` and upload to Drive gallery if connected. Optional db copy to Drive `good-form/data/goodform.db`.
 
 Missing Drive creds: `drive` state `skipped`. App runs.
+
+`drive.py` imports `googleapiclient` and `google_auth_oauthlib` **lazily, inside the functions that use them**, and those packages live in a separate `requirements-drive.txt`. A module-level import makes the whole app fail to boot when the libraries are absent, which contradicts "App runs." Missing libraries and missing credentials both resolve to `skipped`.
 
 Do not commit seeds. Do not cluster inside Drive.
 
