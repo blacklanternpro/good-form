@@ -2,6 +2,14 @@
 
 Date: 2026-09-06
 
+> **Precedence — read before implementing anything here.** This is the oldest of the three documents and the lowest in the ladder:
+>
+> ```
+> docs/emergent/EMERGENT-MASTER-PROMPT.md  >  2026-09-07 ops/admin spec  >  this file
+> ```
+>
+> The 2026-09-07 spec already overrides this document's Discover loop (one Lens call per seed file), scrape-HTML-as-peer, hop cap of 5, scrape source cap of 30, "no background jobs", and "no embeddings" (pHash is allowed, CLIP is not). The master prompt additionally overrides "do not probe feeds during Discover" and the scrape cap of 30 (now 20). Treat this file as background and rationale, not as the build order.
+
 ## Purpose
 
 A local, single-user FastAPI app that grows a Yahoo-style directory of niche aesthetic blogs and archives. It starts from images in `./seed_images/`, finds sites via SerpApi Google Lens (with a text-search fallback), mines blogrolls, scrapes candidate images into a review grid, and zips selected originals. Domains the user actually saves from appear on a Curator Hall of Fame.
